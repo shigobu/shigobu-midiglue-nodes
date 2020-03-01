@@ -4,6 +4,7 @@
 input MidiPacket : MidiIN
 input Int : Interval
 input Int : StrokeDirection 0=up 1=down 2=DownUp
+input Int : Decay
 output MidiPacket : StrokeOut
 
 <Description>
@@ -14,6 +15,7 @@ Other midi messages are real-time.
 <Parameter>
 parameter Interval = 20: interval (millisec)
 parameter StrokeDirection = 0 : StrokeDirection 0=up 1=down 2=DownUp
+parameter Decay = 10 : Velocity decay
 
 <Setup>
 
@@ -22,23 +24,30 @@ static Int interval = ${Interval};
 static std::list<MidiPacket> noteList;
 static Int strokeDirection = ${StrokeDirection};
 static bool isDownUp = false;
+static Int decay = ${Decay};
+static Int noteCount = 0;
 
 static auto outNote = [&](){
     if (noteList.empty()){
         return;
     }
 
+    MidiPacket midiPacket;
     if (strokeDirection == 0){
-        //高い音から出力
-        out0 = noteList.back();
-        //末尾の要素削除
+        //高い音の取得
+        MidiPacket temp = noteList.back();
         noteList.pop_back();
+        int velocity = std::clamp(temp.getVelocity() - decay * noteCount, 1, 127) ;
+        midiPacket = MidiPacket::makeNoteOn(temp.getChannel(), temp.getNoteNumber(), velocity);
     } else {
-        //低い音から出力
-        out0 = noteList.front();
-        //先頭の要素削除
+        //低い音の取得
+        MidiPacket temp = noteList.front();
         noteList.pop_front();
+        int velocity = std::clamp(temp.getVelocity() - decay * noteCount, 1, 127) ;
+        midiPacket = MidiPacket::makeNoteOn(temp.getChannel(), temp.getNoteNumber(), velocity);
     }
+    out0 = midiPacket;
+    noteCount++;
 };
 
 static auto strokeCallback = [&](){
@@ -69,6 +78,7 @@ if (@in0){
         if (noteList.empty()){
             //ノートリストが空の場合5ミリ秒の間、midiパケットの入力を監視する。  
             strokeEvent->cancel();  
+            noteCount = 0;
             noteList.push_back(in0);
             delayEvent->schedule(5 * 1000);
         } else {
@@ -103,5 +113,8 @@ if (@in0){
         isDownUp = true;
         strokeDirection = 0;    //0=up **ストローク処理の前に切り替え処理があるため、実際には、ダウンストロークから始まる。**
     }
+//Decayの設定
+} else if (@in3){
+    decay = in3;
 }
 
