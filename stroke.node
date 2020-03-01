@@ -1,11 +1,9 @@
 <Comment>
-Make a stroke.
-This node has a 5ms delay.
 
 <I/O>
 input MidiPacket : MidiIN
 input Int : Interval
-input Int : StrokeDirection 0=up 1=down 2=updown
+input Int : StrokeDirection 0=up 1=down 2=DownUp
 output MidiPacket : StrokeOut
 
 <Description>
@@ -14,49 +12,63 @@ This node has a 5 ms delay in note-on.
 Other midi messages are real-time.
 
 <Parameter>
-parameter Interval = 50: interval (millisec)
-parameter StrokeDirection = 0 : StrokeDirection 0=up 1=down 2=updown
+parameter Interval = 20: interval (millisec)
+parameter StrokeDirection = 0 : StrokeDirection 0=up 1=down 2=DownUp
 
 <Setup>
 
 <Code>
 static Int interval = ${Interval};
 static std::list<MidiPacket> noteList;
-static Int strokeDirection = 0;
+static Int strokeDirection = ${StrokeDirection};
+static bool isDownUp = false;
 
 static auto outNote = [&](){
     if (noteList.empty()){
         return;
     }
 
-    //低い順番でノートを出力
-    out0 = noteList.front();
-    //先頭の要素削除
-    noteList.pop_front();
+    if (strokeDirection == 0){
+        //高い音から出力
+        out0 = noteList.back();
+        //末尾の要素削除
+        noteList.pop_back();
+    } else {
+        //低い音から出力
+        out0 = noteList.front();
+        //先頭の要素削除
+        noteList.pop_front();
+    }
 };
 
-static auto strokeCb = [&](){
+static auto strokeCallback = [&](){
     if (noteList.empty()){
         return;
     }
     outNote();
 };
-static auto strokeEvent = Midiglue::make_cyclic_us_event<>(strokeCb);
+static auto strokeEvent = Midiglue::make_cyclic_us_event<>(strokeCallback);
 
-static auto delayCb = [&](){
+static auto delayCallback = [&](){
     strokeEvent->schedule(interval * 1000);
+    //ストローク方向の切り替え
+    if (isDownUp){
+        if (strokeDirection == 0){
+            strokeDirection = 1;
+        } else {
+            strokeDirection = 0;
+        }
+    }
     outNote();
 };
-static auto delayEvent = Midiglue::make_oneshot_us_event<>(delayCb);
+static auto delayEvent = Midiglue::make_oneshot_us_event<>(delayCallback);
 
-//インターバルを設定
-if (@in1){
-    interval = in1;
 //midiパケットを受けたら　
-}else if (@in0){
+if (@in0){
     if (in0.isNoteOn()){
         if (noteList.empty()){
-            //ノートリストが空の場合5ミリ秒の間、midiパケットの入力を監視する。    
+            //ノートリストが空の場合5ミリ秒の間、midiパケットの入力を監視する。  
+            strokeEvent->cancel();  
             noteList.push_back(in0);
             delayEvent->schedule(5 * 1000);
         } else {
@@ -75,11 +87,21 @@ if (@in1){
             }
         }
     } else if (in0.isNoteOff()){
-        noteList.clear();
-        strokeEvent->cancel();
         out0 = in0;
     } else {
         out0 = in0;
+    }
+//インターバルを設定
+} else if (@in1){
+    interval = in1;
+//ストローク方向の設定
+} else if (@in2){
+    if (in2 == 0 || in2 == 1){
+        isDownUp = false;
+        strokeDirection = in2;
+    } else {
+        isDownUp = true;
+        strokeDirection = 0;    //0=up **ストローク処理の前に切り替え処理があるため、実際には、ダウンストロークから始まる。**
     }
 }
 
