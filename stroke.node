@@ -35,16 +35,14 @@ static auto outNote = [&](){
     MidiPacket midiPacket;
     if (strokeDirection == 0){
         //高い音の取得
-        MidiPacket temp = noteList.back();
+        midiPacket = noteList.back();
         noteList.pop_back();
-        int velocity = std::clamp(temp.getVelocity() - decay * noteCount, 1, 127) ;
-        midiPacket = MidiPacket::makeNoteOn(temp.getChannel(), temp.getNoteNumber(), velocity);
+        midiPacket.byte2 = std::clamp(midiPacket.byte2 - decay * noteCount, 1, 127);        //ベロシティは３バイト目
     } else {
         //低い音の取得
-        MidiPacket temp = noteList.front();
+        midiPacket = noteList.front();
         noteList.pop_front();
-        int velocity = std::clamp(temp.getVelocity() - decay * noteCount, 1, 127) ;
-        midiPacket = MidiPacket::makeNoteOn(temp.getChannel(), temp.getNoteNumber(), velocity);
+        midiPacket.byte2 = std::clamp(midiPacket.byte2 - decay * noteCount, 1, 127);        //ベロシティは３バイト目
     }
     out0 = midiPacket;
     noteCount++;
